@@ -1,0 +1,106 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: nexplore-db
+  namespace: nexplore
+spec:
+  ports:
+    - port: 5432
+  selector:
+    app: nexplore-db
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pv-claim
+  namespace: nexplore
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: nexplore-db
+  namespace: nexplore
+spec:
+  serviceName: "nexplore-db"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nexplore-db
+  template:
+    metadata:
+      labels:
+        app: nexplore-db
+    spec:
+      containers:
+        - name: nexplore-db
+          image: postgres:13
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: nexplore-postgres-secret
+                  key: user
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: nexplore-postgres-secret
+                  key: password
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: nexplore-postgres-secret
+                  key: dbname
+          volumeMounts:
+            - name: init-scripts
+              mountPath: /docker-entrypoint-initdb.d
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: init-scripts
+          configMap:
+            name: init-db-scripts
+        - name: postgres-data
+          persistentVolumeClaim:
+            claimName: postgres-pv-claim
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: init-db-scripts
+  namespace: nexplore
+data:
+  init.sql: |
+    DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE  table_schema = 'public'
+            AND    table_name   = 'to_do_list'
+        )
+        THEN
+            CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+            CREATE TABLE to_do_list (
+                id SERIAL PRIMARY KEY,
+                title VARCHAR(255) NOT NULL,
+                description TEXT,
+                status BOOLEAN NOT NULL DEFAULT false,
+                hash UUID DEFAULT uuid_generate_v4(),
+                created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+            );
+        END IF;
+    END
+    $$;
+---
+

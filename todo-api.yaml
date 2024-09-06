@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: todolist-api
+  namespace: nexplore
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: todolist-api
+  template:
+    metadata:
+      labels:
+        app: todolist-api
+    spec:
+      containers:
+      - name: todolist-api
+        image: ghcr.io/lopoon/nexplore_todolist_api:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 3000
+        env:
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: nexplore-postgres-secret
+              key: user
+        - name: DB_HOST
+          value: nexplore-db
+        - name: DB_NAME
+          valueFrom:
+            secretKeyRef:
+              name: nexplore-postgres-secret
+              key: dbname
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: nexplore-postgres-secret
+              key: password
+        - name: DB_PORT
+          value: "5432"
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: todolist-api-service
+  namespace: nexplore
+spec:
+  selector:
+    app: todolist-api
+  ports:
+    - protocol: TCP
+      port: 3000
+      targetPort: 3000
